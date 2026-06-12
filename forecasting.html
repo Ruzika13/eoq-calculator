@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Forecasting – IE Tool</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        /* ---------- Base + Dark Mode Variables (same as others) ---------- */
+        :root {
+            --bg: #f4f7fc;
+            --card-bg: #ffffff;
+            --text: #333333;
+            --heading: #1e3c72;
+            --input-border: #cccccc;
+            --result-bg: #f0f4ff;
+            --shadow: rgba(0,0,0,0.08);
+            --footer-text: #888888;
+        }
+        body.dark {
+            --bg: #1a1a2e;
+            --card-bg: #16213e;
+            --text: #e0e0e0;
+            --heading: #a6c1ff;
+            --input-border: #444466;
+            --result-bg: #0f3460;
+            --shadow: rgba(0,0,0,0.4);
+            --footer-text: #aaaaaa;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: var(--bg); display: flex; justify-content: center; padding: 2rem 1rem; color: var(--text); }
+        .container { max-width: 900px; width: 100%; background: var(--card-bg); border-radius: 16px; padding: 2rem; box-shadow: 0 10px 30px var(--shadow); }
+        h1 { color: var(--heading); margin-bottom: 0.3rem; }
+        .subtitle { color: var(--text); opacity: 0.7; margin-bottom: 2rem; }
+        .input-row { display: flex; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; align-items: end; }
+        .input-group { flex: 1; min-width: 150px; }
+        .input-group label { display: block; font-weight: 600; margin-bottom: 0.3rem; }
+        .input-group input, .input-group textarea { width: 100%; padding: 0.5rem; border: 2px solid var(--input-border); border-radius: 8px; font-size: 1rem; background: var(--card-bg); color: var(--text); }
+        textarea { resize: vertical; }
+        button { background: var(--heading); color: white; border: none; padding: 0.6rem 1.5rem; border-radius: 8px; cursor: pointer; font-weight: 600; margin-top: 0.5rem; }
+        button:hover { opacity: 0.9; }
+        .results { margin: 2rem 0; }
+        .result-card { background: var(--result-bg); padding: 1rem; border-radius: 12px; text-align: center; display: inline-block; min-width: 120px; margin-right: 1rem; }
+        .result-card .label { font-size: 0.8rem; text-transform: uppercase; color: var(--heading); }
+        .result-card .value { font-size: 1.4rem; font-weight: 700; }
+        .table-wrapper { overflow-x: auto; margin: 1.5rem 0; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { border: 1px solid var(--input-border); padding: 0.5rem; text-align: center; }
+        th { background: var(--heading); color: white; }
+        .canvas-wrapper { max-width: 100%; }
+        .back-link { display: block; text-align: center; margin-top: 2rem; color: var(--heading); text-decoration: none; font-weight: 600; }
+        footer { text-align: center; color: var(--footer-text); font-size: 0.8rem; margin-top: 1rem; }
+    </style>
+</head>
+<body>
+    <!-- Dark mode toggle -->
+    <button onclick="toggleDarkMode()" style="position:fixed; top:20px; right:20px; background:var(--heading); color:white; border:none; border-radius:50%; width:40px; height:40px; font-size:1.2rem; cursor:pointer; z-index:999;" title="Toggle dark mode">🌓</button>
+
+    <div class="container">
+        <h1>📈 Forecasting (Single Exponential Smoothing)</h1>
+        <p class="subtitle">Automatically finds the optimal smoothing constant α by minimising MSE.</p>
+
+        <div class="input-row">
+            <div class="input-group">
+                <label>Historical Demand (comma or space separated)</label>
+                <textarea id="demandInput" rows="3" placeholder="e.g., 120, 135, 140, 150, 158">120, 135, 140, 150, 158</textarea>
+            </div>
+        </div>
+
+        <button onclick="runForecast()">▶ Run Forecast</button>
+
+        <div id="resultsArea" style="display:none;">
+            <div class="results">
+                <div class="result-card">
+                    <div class="label">Optimal α</div>
+                    <div class="value" id="alphaValue">–</div>
+                </div>
+                <div class="result-card">
+                    <div class="label">MSE (in‑sample)</div>
+                    <div class="value" id="mseValue">–</div>
+                </div>
+                <div class="result-card">
+                    <div class="label">Next Period Forecast</div>
+                    <div class="value" id="nextForecast">–</div>
+                </div>
+            </div>
+            <div class="table-wrapper">
+                <table id="forecastTable">
+                    <thead><tr><th>Period</th><th>Demand</th><th>Forecast</th><th>Error</th><th>Abs Error</th></tr></thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+            <div class="canvas-wrapper">
+                <canvas id="forecastChart" width="600" height="300"></canvas>
+            </div>
+        </div>
+
+        <a href="index.html" class="back-link">← Back to Tools</a>
+        <footer>Industrial Engineering Tool – Built with HTML/CSS/JS</footer>
+    </div>
+
+    <script>
+        // Dark mode toggle (reusable)
+        function setDarkMode(enabled) { if(enabled) document.body.classList.add('dark'); else document.body.classList.remove('dark'); }
+        function toggleDarkMode() { const isDark = document.body.classList.toggle('dark'); localStorage.setItem('darkMode', isDark); }
+        (function(){ if(localStorage.getItem('darkMode') === 'true') document.body.classList.add('dark'); })();
+
+        // ---------- Forecasting logic ----------
+        let chartInstance = null;
+
+        function runForecast() {
+            const raw = document.getElementById('demandInput').value.trim();
+            if (!raw) { alert('Please enter demand data.'); return; }
+            // Parse numbers
+            const demand = raw.split(/[,\s]+/).map(Number).filter(n => !isNaN(n));
+            if (demand.length < 2) { alert('Need at least 2 data points.'); return; }
+
+            // Grid search for optimal alpha (0.01 to 0.99)
+            let bestAlpha = 0.1;
+            let bestMSE = Infinity;
+            for (let a = 0.01; a <= 0.99; a += 0.01) {
+                let forecast = demand[0]; // initialise with first observation
+                let sse = 0;
+                for (let i = 1; i < demand.length; i++) {
+                    const error = demand[i] - forecast;
+                    sse += error * error;
+                    forecast = a * demand[i] + (1 - a) * forecast;
+                }
+                const mse = sse / (demand.length - 1);
+                if (mse < bestMSE) {
+                    bestMSE = mse;
+                    bestAlpha = a;
+                }
+            }
+
+            // Re-run with best alpha to generate all forecasts
+            const forecasts = [null]; // period 1 has no forecast (or set to demand[0])
+            let currentForecast = demand[0];
+            forecasts.push(currentForecast); // forecast for period 2
+            const errors = [null, demand[1] - currentForecast];
+            for (let i = 2; i < demand.length; i++) {
+                currentForecast = bestAlpha * demand[i-1] + (1 - bestAlpha) * currentForecast;
+                forecasts.push(currentForecast);
+                errors.push(demand[i] - currentForecast);
+            }
+            // Forecast for next period (t+1)
+            const nextForecast = bestAlpha * demand[demand.length-1] + (1 - bestAlpha) * currentForecast;
+
+            // Display KPIs
+            document.getElementById('resultsArea').style.display = 'block';
+            document.getElementById('alphaValue').textContent = bestAlpha.toFixed(2);
+            document.getElementById('mseValue').textContent = bestMSE.toFixed(2);
+            document.getElementById('nextForecast').textContent = nextForecast.toFixed(1);
+
+            // Build table
+            const tbody = document.querySelector('#forecastTable tbody');
+            tbody.innerHTML = '';
+            for (let i = 0; i < demand.length; i++) {
+                const tr = document.createElement('tr');
+                const period = i + 1;
+                const demandVal = demand[i];
+                const fcVal = i === 0 ? '-' : forecasts[i].toFixed(2);
+                const errVal = i === 0 ? '-' : errors[i].toFixed(2);
+                const absErr = i === 0 ? '-' : Math.abs(errors[i]).toFixed(2);
+                tr.innerHTML = `<td>${period}</td><td>${demandVal}</td><td>${fcVal}</td><td>${errVal}</td><td>${absErr}</td>`;
+                tbody.appendChild(tr);
+            }
+
+            // Chart
+            const ctx = document.getElementById('forecastChart').getContext('2d');
+            if (chartInstance) chartInstance.destroy();
+            const labels = Array.from({length: demand.length}, (_, i) => i+1);
+            const forecastData = forecasts.map(f => f !== null ? f : null); // null for period 1
+            chartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        { label: 'Actual Demand', data: demand, borderColor: '#2980b9', pointRadius: 4, tension: 0.2 },
+                        { label: 'Forecast', data: forecastData, borderColor: '#e67e22', borderDash: [5,5], pointRadius: 3, tension: 0.2 }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { position: 'bottom' } },
+                    scales: {
+                        x: { title: { display: true, text: 'Period' } },
+                        y: { title: { display: true, text: 'Demand' }, beginAtZero: false }
+                    }
+                }
+            });
+        }
+
+        // Run on load with default data
+        window.addEventListener('load', runForecast);
+    </script>
+</body>
+</html>
