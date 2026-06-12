@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ABC Analysis – IE Tool</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f4f7fc; display: flex; justify-content: center; padding: 2rem 1rem; }
+        .container { max-width: 900px; width: 100%; background: white; border-radius: 16px; padding: 2rem; box-shadow: 0 10px 30px rgba(0,0,0,0.08); }
+        h1 { color: #1e3c72; margin-bottom: 0.3rem; }
+        .subtitle { color: #555; margin-bottom: 2rem; }
+        .item-row { display: flex; gap: 1rem; align-items: center; margin-bottom: 0.5rem; }
+        .item-row input { padding: 0.4rem; border: 2px solid #ccc; border-radius: 6px; width: 120px; }
+        button { background: #1e3c72; color: white; border: none; padding: 0.4rem 1rem; border-radius: 8px; cursor: pointer; font-weight: 600; margin: 0.3rem; }
+        button:hover { background: #2a4d8c; }
+        .table-wrapper { overflow-x: auto; margin-top: 1rem; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: center; }
+        th { background: #1e3c72; color: white; }
+        .class-A { background: #f9ebea; }
+        .class-B { background: #fef9e7; }
+        .class-C { background: #eafaf1; }
+        .canvas-wrapper { max-width: 100%; margin-top: 2rem; }
+        .back-link { display: block; text-align: center; margin-top: 2rem; color: #1e3c72; text-decoration: none; font-weight: 600; }
+        footer { text-align: center; color: #888; font-size: 0.8rem; margin-top: 1rem; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📊 ABC Analysis</h1>
+        <p class="subtitle">Classify inventory items based on annual usage value (Pareto principle).</p>
+
+        <div id="itemsContainer">
+            <!-- dynamic rows -->
+        </div>
+        <button onclick="addItem()">+ Add Item</button>
+        <button onclick="removeItem()">− Remove Last</button>
+        <button onclick="runABC()" style="background:#27ae60;">Run Analysis</button>
+
+        <div id="resultsSection" style="display:none;">
+            <div class="table-wrapper">
+                <table id="resultTable">
+                    <thead><tr><th>Item</th><th>Annual Demand</th><th>Unit Cost</th><th>Annual Value</th><th>% of Total</th><th>Cumulative %</th><th>Class</th></tr></thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+            <div class="canvas-wrapper">
+                <canvas id="abcChart" width="600" height="300"></canvas>
+            </div>
+        </div>
+
+        <a href="index.html" class="back-link">← Back to Tools</a>
+        <footer>Industrial Engineering Tool – Built with HTML/CSS/JS</footer>
+    </div>
+
+    <script>
+        let itemCount = 3;
+        function renderItems() {
+            const container = document.getElementById('itemsContainer');
+            container.innerHTML = '';
+            for (let i = 0; i < itemCount; i++) {
+                const div = document.createElement('div');
+                div.className = 'item-row';
+                div.innerHTML = `
+                    <span>Item ${i+1}:</span>
+                    <input type="text" id="name_${i}" placeholder="Name" value="Item${i+1}">
+                    <input type="number" id="demand_${i}" placeholder="Annual demand" value="${1000 + i*500}">
+                    <input type="number" id="cost_${i}" placeholder="Unit cost" value="${10 + i*5}" step="0.01">
+                `;
+                container.appendChild(div);
+            }
+        }
+
+        function addItem() { itemCount++; renderItems(); }
+        function removeItem() { if (itemCount > 1) { itemCount--; renderItems(); } }
+
+        function runABC() {
+            const items = [];
+            for (let i = 0; i < itemCount; i++) {
+                const name = document.getElementById(`name_${i}`).value || `Item${i+1}`;
+                const demand = parseFloat(document.getElementById(`demand_${i}`).value) || 0;
+                const cost = parseFloat(document.getElementById(`cost_${i}`).value) || 0;
+                const value = demand * cost;
+                items.push({ name, demand, cost, value });
+            }
+            // Sort descending by value
+            items.sort((a,b) => b.value - a.value);
+            const totalValue = items.reduce((sum, item) => sum + item.value, 0);
+            let cumPercent = 0;
+            const classes = [];
+            items.forEach(item => {
+                const percent = totalValue ? (item.value / totalValue) * 100 : 0;
+                cumPercent += percent;
+                let cls = '';
+                if (cumPercent <= 80) cls = 'A';
+                else if (cumPercent <= 95) cls = 'B';
+                else cls = 'C';
+                classes.push({ ...item, percent, cumPercent, cls });
+            });
+
+            // Display table
+            document.getElementById('resultsSection').style.display = 'block';
+            const tbody = document.querySelector('#resultTable tbody');
+            tbody.innerHTML = '';
+            classes.forEach(row => {
+                const tr = document.createElement('tr');
+                tr.className = `class-${row.cls}`;
+                tr.innerHTML = `
+                    <td>${row.name}</td>
+                    <td>${row.demand.toLocaleString()}</td>
+                    <td>$${row.cost.toFixed(2)}</td>
+                    <td>$${row.value.toFixed(2)}</td>
+                    <td>${row.percent.toFixed(1)}%</td>
+                    <td>${row.cumPercent.toFixed(1)}%</td>
+                    <td><strong>${row.cls}</strong></td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            // Chart: Pareto bar + cumulative line
+            const labels = classes.map(r => r.name);
+            const barValues = classes.map(r => r.value);
+            const cumLine = classes.map(r => r.cumPercent);
+
+            const ctx = document.getElementById('abcChart').getContext('2d');
+            if (window.abcChartInstance) window.abcChartInstance.destroy();
+            window.abcChartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Annual Usage Value ($)',
+                            data: barValues,
+                            backgroundColor: 'rgba(30,60,114,0.6)',
+                            borderColor: '#1e3c72',
+                            borderWidth: 1,
+                            yAxisID: 'y'
+                        },
+                        {
+                            label: 'Cumulative %',
+                            data: cumLine,
+                            type: 'line',
+                            borderColor: '#e67e22',
+                            backgroundColor: 'transparent',
+                            borderWidth: 2,
+                            pointRadius: 4,
+                            yAxisID: 'y1'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { position: 'bottom' } },
+                    scales: {
+                        y: {
+                            type: 'linear',
+                            position: 'left',
+                            title: { display: true, text: 'Annual Value ($)' },
+                            beginAtZero: true
+                        },
+                        y1: {
+                            type: 'linear',
+                            position: 'right',
+                            title: { display: true, text: 'Cumulative %' },
+                            min: 0,
+                            max: 100,
+                            grid: { drawOnChartArea: false }
+                        }
+                    }
+                }
+            });
+        }
+
+        window.addEventListener('load', renderItems);
+    </script>
+</body>
+</html>
