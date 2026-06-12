@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Break‑Even Analysis – IE Tool</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f4f7fc; display: flex; justify-content: center; padding: 2rem 1rem; }
+        .container { max-width: 800px; width: 100%; background: white; border-radius: 16px; padding: 2rem; box-shadow: 0 10px 30px rgba(0,0,0,0.08); }
+        h1 { color: #1e3c72; margin-bottom: 0.3rem; }
+        .subtitle { color: #555; margin-bottom: 2rem; }
+        .input-row { display: flex; gap: 1.5rem; margin-bottom: 2rem; flex-wrap: wrap; }
+        .input-group { flex: 1; min-width: 150px; }
+        .input-group label { display: block; font-weight: 600; margin-bottom: 0.3rem; color: #333; }
+        .input-group input { width: 100%; padding: 0.5rem; border: 2px solid #ccc; border-radius: 8px; font-size: 1rem; }
+        .input-group input:focus { border-color: #1e3c72; outline: none; }
+        .results { display: flex; gap: 2rem; flex-wrap: wrap; margin: 2rem 0; }
+        .result-card { background: #f0f4ff; padding: 1.5rem; border-radius: 12px; text-align: center; flex: 1; min-width: 150px; }
+        .result-card .label { font-size: 0.85rem; color: #555; text-transform: uppercase; }
+        .result-card .value { font-size: 1.8rem; font-weight: 700; color: #1e3c72; }
+        .canvas-wrapper { max-width: 100%; margin-top: 1rem; }
+        .back-link { display: block; text-align: center; margin-top: 2rem; color: #1e3c72; text-decoration: none; font-weight: 600; }
+        footer { text-align: center; color: #888; font-size: 0.8rem; margin-top: 1rem; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>💰 Break‑Even Analysis</h1>
+        <p class="subtitle">Find the point where total revenue equals total costs.</p>
+
+        <div class="input-row">
+            <div class="input-group">
+                <label>Fixed Costs ($)</label>
+                <input type="number" id="fixedCost" value="5000" min="0" step="100">
+            </div>
+            <div class="input-group">
+                <label>Variable Cost per Unit ($)</label>
+                <input type="number" id="variableCost" value="20" min="0" step="1">
+            </div>
+            <div class="input-group">
+                <label>Selling Price per Unit ($)</label>
+                <input type="number" id="price" value="50" min="0.01" step="1">
+            </div>
+        </div>
+
+        <div class="results">
+            <div class="result-card">
+                <div class="label">Break‑Even (Units)</div>
+                <div class="value" id="beUnits">–</div>
+            </div>
+            <div class="result-card">
+                <div class="label">Break‑Even (Sales $)</div>
+                <div class="value" id="beSales">–</div>
+            </div>
+        </div>
+
+        <div class="canvas-wrapper">
+            <canvas id="beChart" width="600" height="350"></canvas>
+        </div>
+
+        <a href="index.html" class="back-link">← Back to Tools</a>
+        <footer>Industrial Engineering Tool – Built with HTML/CSS/JS</footer>
+    </div>
+
+    <script>
+        let chartInstance = null;
+
+        function updateDisplay() {
+            const FC = parseFloat(document.getElementById('fixedCost').value) || 0;
+            const VC = parseFloat(document.getElementById('variableCost').value) || 0;
+            const P = parseFloat(document.getElementById('price').value) || 0;
+
+            if (P <= VC || P <= 0) {
+                document.getElementById('beUnits').textContent = 'N/A';
+                document.getElementById('beSales').textContent = 'N/A';
+                if (chartInstance) chartInstance.destroy();
+                return;
+            }
+
+            const beUnits = FC / (P - VC);
+            const beSales = beUnits * P;
+
+            document.getElementById('beUnits').textContent = Math.round(beUnits).toLocaleString();
+            document.getElementById('beSales').textContent = '$' + Math.round(beSales).toLocaleString();
+
+            // Generate chart data for a reasonable range around break‑even
+            const maxUnits = Math.ceil(beUnits * 2) || 10;
+            const step = Math.max(1, Math.floor(maxUnits / 50));
+            const units = [];
+            const fixedCostLine = [];
+            const totalCostLine = [];
+            const revenueLine = [];
+
+            for (let q = 0; q <= maxUnits; q += step) {
+                units.push(q);
+                fixedCostLine.push(FC);
+                totalCostLine.push(FC + VC * q);
+                revenueLine.push(P * q);
+            }
+
+            const ctx = document.getElementById('beChart').getContext('2d');
+            if (chartInstance) chartInstance.destroy();
+
+            chartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: units,
+                    datasets: [
+                        {
+                            label: 'Fixed Costs',
+                            data: fixedCostLine,
+                            borderColor: '#e67e22',
+                            backgroundColor: 'transparent',
+                            borderDash: [5, 5],
+                            tension: 0.1
+                        },
+                        {
+                            label: 'Total Costs',
+                            data: totalCostLine,
+                            borderColor: '#c0392b',
+                            backgroundColor: 'rgba(192,57,43,0.1)',
+                            tension: 0.2
+                        },
+                        {
+                            label: 'Revenue',
+                            data: revenueLine,
+                            borderColor: '#27ae60',
+                            backgroundColor: 'rgba(39,174,96,0.1)',
+                            tension: 0.2
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { position: 'bottom' },
+                        tooltip: { mode: 'index' }
+                    },
+                    scales: {
+                        x: { title: { display: true, text: 'Units Sold' } },
+                        y: { title: { display: true, text: 'Cost / Revenue ($)' }, beginAtZero: true }
+                    }
+                },
+                plugins: [{
+                    id: 'beLine',
+                    afterDraw(chart) {
+                        const { ctx, chartArea, scales } = chart;
+                        const xPixel = scales.x.getPixelForValue(beUnits);
+                        if (xPixel >= chartArea.left && xPixel <= chartArea.right) {
+                            ctx.save();
+                            ctx.beginPath();
+                            ctx.setLineDash([4, 4]);
+                            ctx.strokeStyle = '#8e44ad';
+                            ctx.lineWidth = 2;
+                            ctx.moveTo(xPixel, chartArea.top);
+                            ctx.lineTo(xPixel, chartArea.bottom);
+                            ctx.stroke();
+                            ctx.font = 'bold 12px "Segoe UI"';
+                            ctx.fillStyle = '#8e44ad';
+                            ctx.fillText(`BE: ${Math.round(beUnits)} units`, xPixel + 6, chartArea.top + 20);
+                            ctx.restore();
+                        }
+                    }
+                }]
+            });
+        }
+
+        document.getElementById('fixedCost').addEventListener('input', updateDisplay);
+        document.getElementById('variableCost').addEventListener('input', updateDisplay);
+        document.getElementById('price').addEventListener('input', updateDisplay);
+
+        window.addEventListener('load', updateDisplay);
+    </script>
+</body>
+</html>
