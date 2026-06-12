@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>M/M/1 Queue Calculator – IE Tool</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f4f7fc; display: flex; justify-content: center; padding: 2rem 1rem; }
+        .container { max-width: 800px; width: 100%; background: white; border-radius: 16px; padding: 2rem; box-shadow: 0 10px 30px rgba(0,0,0,0.08); }
+        h1 { color: #1e3c72; margin-bottom: 0.5rem; }
+        .subtitle { color: #555; margin-bottom: 2rem; }
+        .input-row { display: flex; gap: 1.5rem; margin-bottom: 2rem; flex-wrap: wrap; }
+        .input-group { flex: 1; min-width: 150px; }
+        .input-group label { display: block; font-weight: 600; margin-bottom: 0.3rem; color: #333; }
+        .input-group input { width: 100%; padding: 0.6rem; border: 2px solid #ccc; border-radius: 8px; font-size: 1rem; transition: border 0.2s; }
+        .input-group input:focus { border-color: #1e3c72; outline: none; }
+        .results { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
+        .result-card { background: #f0f4ff; padding: 1rem; border-radius: 12px; text-align: center; }
+        .result-card .label { font-size: 0.8rem; color: #555; text-transform: uppercase; letter-spacing: 0.5px; }
+        .result-card .value { font-size: 1.4rem; font-weight: 700; color: #1e3c72; }
+        .canvas-wrapper { max-width: 100%; margin-top: 1rem; }
+        footer { text-align: center; color: #888; font-size: 0.8rem; margin-top: 2rem; }
+        .back-link { display: block; text-align: center; margin-top: 1.5rem; color: #1e3c72; text-decoration: none; font-weight: 600; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📊 M/M/1 Queue Calculator</h1>
+        <p class="subtitle">Analyze a single-server queue with Poisson arrivals and exponential service times.</p>
+
+        <div class="input-row">
+            <div class="input-group">
+                <label for="arrivalRate">Arrival rate (λ) per hour</label>
+                <input type="number" id="arrivalRate" value="10" min="0.1" step="0.1">
+            </div>
+            <div class="input-group">
+                <label for="serviceRate">Service rate (μ) per hour</label>
+                <input type="number" id="serviceRate" value="12" min="0.1" step="0.1">
+            </div>
+        </div>
+
+        <div class="results">
+            <div class="result-card">
+                <div class="label">Traffic Intensity (ρ)</div>
+                <div class="value" id="rhoValue">–</div>
+            </div>
+            <div class="result-card">
+                <div class="label">Avg in System (L)</div>
+                <div class="value" id="LValue">–</div>
+            </div>
+            <div class="result-card">
+                <div class="label">Avg in Queue (L<sub>q</sub>)</div>
+                <div class="value" id="LqValue">–</div>
+            </div>
+            <div class="result-card">
+                <div class="label">Avg Time in System (W)</div>
+                <div class="value" id="WValue">–</div>
+            </div>
+            <div class="result-card">
+                <div class="label">Avg Wait in Queue (W<sub>q</sub>)</div>
+                <div class="value" id="WqValue">–</div>
+            </div>
+            <div class="result-card">
+                <div class="label">Prob. System Empty (P<sub>0</sub>)</div>
+                <div class="value" id="P0Value">–</div>
+            </div>
+        </div>
+
+        <div class="canvas-wrapper">
+            <canvas id="probChart" width="600" height="300"></canvas>
+        </div>
+
+        <footer>Industrial Engineering Tool – Built with HTML/CSS/JS</footer>
+        <a href="index.html" class="back-link">← Back to Tools</a>
+    </div>
+
+    <script>
+        let chartInstance = null;
+
+        function calculateQueue(lambda, mu) {
+            if (lambda >= mu) {
+                return { error: true };
+            }
+            const rho = lambda / mu;
+            const L = lambda / (mu - lambda);
+            const Lq = (lambda * lambda) / (mu * (mu - lambda));
+            const W = 1 / (mu - lambda);
+            const Wq = lambda / (mu * (mu - lambda));
+            const P0 = 1 - rho;
+            return { rho, L, Lq, W, Wq, P0, error: false };
+        }
+
+        function updateDisplay() {
+            const lambda = parseFloat(document.getElementById('arrivalRate').value) || 0;
+            const mu = parseFloat(document.getElementById('serviceRate').value) || 0;
+
+            if (lambda <= 0 || mu <= 0 || lambda >= mu) {
+                document.getElementById('rhoValue').textContent = '–';
+                document.getElementById('LValue').textContent = '–';
+                document.getElementById('LqValue').textContent = '–';
+                document.getElementById('WValue').textContent = '–';
+                document.getElementById('WqValue').textContent = '–';
+                document.getElementById('P0Value').textContent = '–';
+                if (chartInstance) chartInstance.destroy();
+                return;
+            }
+
+            const q = calculateQueue(lambda, mu);
+            document.getElementById('rhoValue').textContent = q.rho.toFixed(3);
+            document.getElementById('LValue').textContent = q.L.toFixed(3);
+            document.getElementById('LqValue').textContent = q.Lq.toFixed(3);
+            document.getElementById('WValue').textContent = q.W.toFixed(3) + ' hours';
+            document.getElementById('WqValue').textContent = q.Wq.toFixed(3) + ' hours';
+            document.getElementById('P0Value').textContent = q.P0.toFixed(3);
+
+            // Probability distribution bar chart (geometric)
+            const maxN = 15;
+            const labels = [];
+            const probData = [];
+            for (let n = 0; n <= maxN; n++) {
+                labels.push(n);
+                probData.push((1 - q.rho) * Math.pow(q.rho, n));
+            }
+
+            const ctx = document.getElementById('probChart').getContext('2d');
+            if (chartInstance) chartInstance.destroy();
+
+            chartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Probability of n customers in system',
+                        data: probData,
+                        backgroundColor: 'rgba(30, 60, 114, 0.6)',
+                        borderColor: '#1e3c72',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { callbacks: { label: ctx => (ctx.raw * 100).toFixed(2) + '%' } }
+                    },
+                    scales: {
+                        x: { title: { display: true, text: 'Number of customers (n)' } },
+                        y: { title: { display: true, text: 'Probability' }, beginAtZero: true }
+                    }
+                }
+            });
+        }
+
+        document.getElementById('arrivalRate').addEventListener('input', updateDisplay);
+        document.getElementById('serviceRate').addEventListener('input', updateDisplay);
+        window.addEventListener('load', updateDisplay);
+    </script>
+</body>
+</html>
