@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Production Scheduling – IE Tool</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f4f7fc; display: flex; justify-content: center; padding: 2rem 1rem; }
+        .container { max-width: 900px; width: 100%; background: white; border-radius: 16px; padding: 2rem; box-shadow: 0 10px 30px rgba(0,0,0,0.08); }
+        h1 { color: #1e3c72; margin-bottom: 0.3rem; }
+        .subtitle { color: #555; margin-bottom: 2rem; }
+        .section { margin-bottom: 2rem; }
+        .section h2 { color: #1e3c72; border-bottom: 2px solid #1e3c72; padding-bottom: 0.3rem; margin-bottom: 1rem; }
+        .job-inputs { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1rem; }
+        .job-row { display: flex; gap: 1rem; align-items: center; }
+        .job-row input { width: 80px; padding: 0.4rem; border: 2px solid #ccc; border-radius: 6px; font-size: 1rem; }
+        .job-row input:focus { border-color: #1e3c72; outline: none; }
+        .job-row label { font-weight: 600; min-width: 60px; }
+        button { background: #1e3c72; color: white; border: none; padding: 0.5rem 1.2rem; border-radius: 8px; cursor: pointer; font-weight: 600; margin-right: 0.5rem; }
+        button:hover { background: #2a4d8c; }
+        .table-wrapper { overflow-x: auto; margin-top: 1rem; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { border: 1px solid #ddd; padding: 0.6rem; text-align: center; }
+        th { background: #1e3c72; color: white; }
+        .makespan-highlight { font-size: 1.3rem; font-weight: 700; color: #2ecc71; margin-top: 1rem; }
+        .gantt { display: flex; flex-direction: column; gap: 0.3rem; margin-top: 1rem; }
+        .gantt-machine { display: flex; align-items: center; }
+        .gantt-label { width: 60px; font-weight: 600; }
+        .gantt-bar-container { flex: 1; height: 30px; background: #f0f0f0; border-radius: 4px; position: relative; }
+        .gantt-bar { position: absolute; height: 100%; border-radius: 4px; display: flex; align-items: center; justify-content: center; color: white; font-size: 0.75rem; overflow: hidden; }
+        .back-link { display: block; text-align: center; margin-top: 2rem; color: #1e3c72; text-decoration: none; font-weight: 600; }
+        footer { text-align: center; color: #888; font-size: 0.8rem; margin-top: 1rem; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🏭 Production Scheduling (2‑Machine Flow Shop)</h1>
+        <p class="subtitle">Minimise makespan using Johnson's Rule or a custom sequence. All times in hours.</p>
+
+        <div class="section">
+            <h2>1. Enter Job Processing Times</h2>
+            <p>Add at least 2 jobs. Each job must be processed first on Machine 1, then on Machine 2.</p>
+            <div id="jobsContainer" class="job-inputs">
+                <!-- dynamic rows will be inserted here -->
+            </div>
+            <button onclick="addJob()">+ Add Job</button>
+            <button onclick="removeJob()" style="background:#888;">− Remove Last</button>
+        </div>
+
+        <div class="section">
+            <h2>2. Choose Scheduling Method</h2>
+            <button onclick="scheduleJohnson()">🔢 Johnson's Rule (Optimal)</button>
+            <button onclick="scheduleManual()">✏️ Use Entered Order</button>
+        </div>
+
+        <div class="section" id="resultsSection" style="display:none;">
+            <h2>3. Schedule & Makespan</h2>
+            <div class="table-wrapper">
+                <table id="scheduleTable">
+                    <thead><tr><th>Job</th><th>M1 Start</th><th>M1 End</th><th>M2 Start</th><th>M2 End</th></tr></thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+            <div class="makespan-highlight" id="makespanDisplay"></div>
+            <div class="gantt" id="ganttChart"></div>
+        </div>
+
+        <a href="index.html" class="back-link">← Back to Tools</a>
+        <footer>Industrial Engineering Tool – Built with HTML/CSS/JS</footer>
+    </div>
+
+    <script>
+        // -------------- Job management --------------
+        let jobCount = 2; // start with 2 jobs
+
+        function renderJobInputs() {
+            const container = document.getElementById('jobsContainer');
+            container.innerHTML = '';
+            for (let i = 0; i < jobCount; i++) {
+                const row = document.createElement('div');
+                row.className = 'job-row';
+                row.innerHTML = `
+                    <label>Job ${i+1}:</label>
+                    <span>M1 <input type="number" id="m1_${i}" min="0" step="0.1" value="${getSaved(i,'m1',5)}"></span>
+                    <span>M2 <input type="number" id="m2_${i}" min="0" step="0.1" value="${getSaved(i,'m2',4)}"></span>
+                `;
+                container.appendChild(row);
+            }
+        }
+
+        function getSaved(index, machine, fallback) {
+            const el = document.getElementById(`${machine}_${index}`);
+            return el ? el.value : fallback;
+        }
+
+        function addJob() {
+            jobCount++;
+            renderJobInputs();
+        }
+
+        function removeJob() {
+            if (jobCount > 2) {
+                jobCount--;
+                renderJobInputs();
+            }
+        }
+
+        // -------------- Scheduling logic --------------
+        function getJobTimes() {
+            const jobs = [];
+            for (let i = 0; i < jobCount; i++) {
+                const m1 = parseFloat(document.getElementById(`m1_${i}`).value) || 0;
+                const m2 = parseFloat(document.getElementById(`m2_${i}`).value) || 0;
+                jobs.push({ id: i+1, m1, m2 });
+            }
+            return jobs;
+        }
+
+        function calculateSchedule(sequence) {
+            // sequence is array of job objects {id, m1, m2} in order
+            let m1End = 0;
+            let m2End = 0;
+            const schedule = [];
+            sequence.forEach(job => {
+                const m1Start = m1End;
+                const m1Finish = m1Start + job.m1;
+                const m2Start = Math.max(m1Finish, m2End);
+                const m2Finish = m2Start + job.m2;
+                schedule.push({
+                    id: job.id,
+                    m1Start, m1End: m1Finish,
+                    m2Start, m2End: m2Finish
+                });
+                m1End = m1Finish;
+                m2End = m2Finish;
+            });
+            const makespan = schedule.length ? schedule[schedule.length-1].m2End : 0;
+            return { schedule, makespan };
+        }
+
+        function scheduleJohnson() {
+            const jobs = getJobTimes();
+            if (jobs.length === 0) return;
+            // Johnson's rule
+            const group1 = []; // jobs where m1 <= m2
+            const group2 = []; // jobs where m1 > m2
+            jobs.forEach(job => {
+                if (job.m1 <= job.m2) group1.push(job);
+                else group2.push(job);
+            });
+            group1.sort((a,b) => a.m1 - b.m1);
+            group2.sort((a,b) => b.m2 - a.m2);
+            const sequence = group1.concat(group2);
+            displayResults(sequence);
+        }
+
+        function scheduleManual() {
+            const jobs = getJobTimes();
+            // use the order as entered (job 1, job 2, ...)
+            displayResults(jobs);
+        }
+
+        function displayResults(sequence) {
+            const { schedule, makespan } = calculateSchedule(sequence);
+            document.getElementById('resultsSection').style.display = 'block';
+            
+            // Table
+            const tbody = document.querySelector('#scheduleTable tbody');
+            tbody.innerHTML = '';
+            schedule.forEach(row => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>Job ${row.id}</td>
+                    <td>${row.m1Start.toFixed(1)}</td>
+                    <td>${row.m1End.toFixed(1)}</td>
+                    <td>${row.m2Start.toFixed(1)}</td>
+                    <td>${row.m2End.toFixed(1)}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+            
+            document.getElementById('makespanDisplay').textContent = `⏱ Makespan = ${makespan.toFixed(1)} hours`;
+            
+            // Gantt chart (CSS bars)
+            const ganttContainer = document.getElementById('ganttChart');
+            ganttContainer.innerHTML = '';
+            if (makespan === 0) return;
+            const maxTime = makespan;
+            // Machine 1 row
+            let m1Html = '<div class="gantt-machine"><span class="gantt-label">M1</span><div class="gantt-bar-container">';
+            schedule.forEach(row => {
+                const leftPercent = (row.m1Start / maxTime) * 100;
+                const widthPercent = ((row.m1End - row.m1Start) / maxTime) * 100;
+                m1Html += `<div class="gantt-bar" style="left:${leftPercent}%; width:${widthPercent}%; background:#3498db;" title="Job ${row.id} on M1">J${row.id}</div>`;
+            });
+            m1Html += '</div></div>';
+            
+            // Machine 2 row
+            let m2Html = '<div class="gantt-machine"><span class="gantt-label">M2</span><div class="gantt-bar-container">';
+            schedule.forEach(row => {
+                const leftPercent = (row.m2Start / maxTime) * 100;
+                const widthPercent = ((row.m2End - row.m2Start) / maxTime) * 100;
+                m2Html += `<div class="gantt-bar" style="left:${leftPercent}%; width:${widthPercent}%; background:#e67e22;" title="Job ${row.id} on M2">J${row.id}</div>`;
+            });
+            m2Html += '</div></div>';
+            
+            ganttContainer.innerHTML = m1Html + m2Html;
+        }
+
+        // -------------- Initialisation --------------
+        window.addEventListener('load', () => {
+            renderJobInputs();
+        });
+    </script>
+</body>
+</html>
