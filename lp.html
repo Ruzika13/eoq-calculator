@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Linear Programming Solver – IE Tool</title>
+    <!-- lightweight Simplex solver from CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/javascript-lp-solver@0.4.24/prod/solver.min.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f4f7fc; display: flex; justify-content: center; padding: 2rem 1rem; }
+        .container { max-width: 900px; width: 100%; background: white; border-radius: 16px; padding: 2rem; box-shadow: 0 10px 30px rgba(0,0,0,0.08); }
+        h1 { color: #1e3c72; margin-bottom: 0.3rem; }
+        .subtitle { color: #555; margin-bottom: 2rem; }
+        .section { margin-bottom: 2rem; }
+        .section h2 { color: #1e3c72; border-bottom: 2px solid #1e3c72; padding-bottom: 0.3rem; margin-bottom: 1rem; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; }
+        th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: center; }
+        th { background: #1e3c72; color: white; }
+        input[type="number"] { width: 70px; padding: 0.4rem; border: 2px solid #ccc; border-radius: 6px; text-align: center; }
+        button { background: #1e3c72; color: white; border: none; padding: 0.6rem 1.5rem; border-radius: 8px; cursor: pointer; font-weight: 600; margin-right: 0.5rem; margin-top: 0.5rem; }
+        button:hover { background: #2a4d8c; }
+        .solution { background: #f0f4ff; padding: 1.5rem; border-radius: 12px; margin-top: 1rem; }
+        .solution strong { color: #1e3c72; }
+        .back-link { display: block; text-align: center; margin-top: 2rem; color: #1e3c72; text-decoration: none; font-weight: 600; }
+        footer { text-align: center; color: #888; font-size: 0.8rem; margin-top: 1rem; }
+        .error { color: #c0392b; font-weight: 600; margin-top: 1rem; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📐 Linear Programming (Product Mix)</h1>
+        <p class="subtitle">Maximize profit subject to resource constraints. Solves using the Simplex method.</p>
+
+        <div class="section">
+            <h2>Problem Setup</h2>
+            <label>Number of products: </label>
+            <input type="number" id="numProducts" min="1" max="5" value="2" onchange="buildProblem()" style="width:60px">
+            <label style="margin-left:2rem;">Number of constraints (resources): </label>
+            <input type="number" id="numConstraints" min="1" max="5" value="2" onchange="buildProblem()" style="width:60px">
+        </div>
+
+        <div class="section" id="problemArea">
+            <!-- dynamically filled by JavaScript -->
+        </div>
+
+        <button onclick="solveLP()">🔍 Solve</button>
+        <div id="resultArea"></div>
+
+        <a href="index.html" class="back-link">← Back to Tools</a>
+        <footer>Industrial Engineering Tool – Built with HTML/CSS/JS</footer>
+    </div>
+
+    <script>
+        // ---------- Build dynamic input tables ----------
+        function buildProblem() {
+            const n = parseInt(document.getElementById('numProducts').value) || 1;
+            const m = parseInt(document.getElementById('numConstraints').value) || 1;
+            let html = '';
+
+            // Objective function coefficients (profit per product)
+            html += '<h2>Objective Function (Profit coefficients)</h2>';
+            html += '<table><tr><th>Product</th>';
+            for (let i = 1; i <= n; i++) html += `<th>x${i}</th>`;
+            html += '</tr><tr><td>Profit per unit</td>';
+            for (let i = 0; i < n; i++) html += `<td><input type="number" id="obj_${i}" value="${10 + i*5}" step="0.1"></td>`;
+            html += '</tr></table>';
+
+            // Constraint coefficients matrix
+            html += '<h2>Constraints (Ax ≤ b)</h2>';
+            html += '<table><tr><th>Resource</th>';
+            for (let i = 1; i <= n; i++) html += `<th>x${i}</th>`;
+            html += '<th>≤ RHS</th></tr>';
+            for (let r = 0; r < m; r++) {
+                html += `<tr><td>Resource ${r+1}</td>`;
+                for (let c = 0; c < n; c++) {
+                    html += `<td><input type="number" id="a_${r}_${c}" value="${(r===0 && c===0 ? 2 : (r===0 && c===1 ? 3 : (r===1 && c===0 ? 4 : 1)))}" step="0.1"></td>`;
+                }
+                html += `<td><input type="number" id="rhs_${r}" value="${(r===0 ? 60 : 40)}" step="0.1"></td></tr>`;
+            }
+            html += '</table>';
+            html += '<p style="color:#888; font-size:0.9rem;">All variables are assumed non‑negative (x≥0).</p>';
+
+            document.getElementById('problemArea').innerHTML = html;
+            document.getElementById('resultArea').innerHTML = ''; // clear old solution
+        }
+
+        // ---------- Solve using jsLPSolver ----------
+        function solveLP() {
+            const n = parseInt(document.getElementById('numProducts').value);
+            const m = parseInt(document.getElementById('numConstraints').value);
+            const resultDiv = document.getElementById('resultArea');
+
+            // Build model in the format required by javascript-lp-solver:
+            // { optimize: "profit", opType: "max", constraints: {...}, variables: {...} }
+            const variables = {};
+            for (let j = 0; j < n; j++) {
+                const varName = `x${j+1}`;
+                const profit = parseFloat(document.getElementById(`obj_${j}`).value) || 0;
+                variables[varName] = { profit: profit };
+            }
+
+            const constraints = {};
+            for (let r = 0; r < m; r++) {
+                const conName = `resource${r+1}`;
+                const coeffs = {};
+                for (let c = 0; c < n; c++) {
+                    const val = parseFloat(document.getElementById(`a_${r}_${c}`).value) || 0;
+                    coeffs[`x${c+1}`] = val;
+                }
+                const rhs = parseFloat(document.getElementById(`rhs_${r}`).value) || 0;
+                constraints[conName] = { max: rhs };
+                // Add coefficients to constraints
+                // Actually, in jsLPSolver, constraints can be given directly with variable coefficients inside the constraint object.
+                // Simpler: use the model format where constraints are given as { name: { max: rhs, ...coeffs } }
+                // So we spread the coeffs.
+                Object.assign(constraints[conName], coeffs);
+            }
+
+            const model = {
+                optimize: "profit",
+                opType: "max",
+                constraints: constraints,
+                variables: variables
+            };
+
+            try {
+                const solution = solver.Solve(model);
+                if (solution.feasible) {
+                    let html = '<div class="solution">';
+                    html += '<strong>✅ Optimal Solution Found</strong><br>';
+                    for (let j = 0; j < n; j++) {
+                        const varName = `x${j+1}`;
+                        const value = solution[varName] !== undefined ? solution[varName].toFixed(2) : 0;
+                        html += `<span>${varName} = ${value}</span><br>`;
+                    }
+                    html += `<strong>Maximum Profit = ${solution.result.toFixed(2)}</strong>`;
+                    html += '</div>';
+                    resultDiv.innerHTML = html;
+                } else {
+                    resultDiv.innerHTML = '<div class="error">❌ The problem is infeasible or unbounded.</div>';
+                }
+            } catch (e) {
+                resultDiv.innerHTML = `<div class="error">⚠️ Solver error: ${e.message}. Check your input values.</div>`;
+            }
+        }
+
+        // Initial build
+        window.addEventListener('load', buildProblem);
+    </script>
+</body>
+</html>
