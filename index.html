@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EOQ Calculator – Industrial Engineering</title>
+    <!-- Chart.js from CDN – no download needed -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f4f7fc;
+            display: flex;
+            justify-content: center;
+            padding: 2rem 1rem;
+        }
+        .container {
+            max-width: 800px;
+            width: 100%;
+            background: white;
+            border-radius: 16px;
+            padding: 2rem;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+        }
+        h1 { color: #1e3c72; margin-bottom: 0.5rem; }
+        .subtitle { color: #555; margin-bottom: 2rem; }
+        .input-row {
+            display: flex;
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+        }
+        .input-group {
+            flex: 1;
+            min-width: 150px;
+        }
+        .input-group label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 0.3rem;
+            color: #333;
+        }
+        .input-group input {
+            width: 100%;
+            padding: 0.6rem;
+            border: 2px solid #ccc;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: border 0.2s;
+        }
+        .input-group input:focus {
+            border-color: #1e3c72;
+            outline: none;
+        }
+        .results {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        .result-card {
+            background: #f0f4ff;
+            padding: 1rem;
+            border-radius: 12px;
+            text-align: center;
+        }
+        .result-card .label {
+            font-size: 0.8rem;
+            color: #555;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .result-card .value {
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: #1e3c72;
+        }
+        .cost-summary {
+            background: #f9fafb;
+            padding: 1rem;
+            border-radius: 12px;
+            margin-bottom: 2rem;
+        }
+        .canvas-wrapper {
+            max-width: 100%;
+            margin-top: 1rem;
+        }
+        footer {
+            text-align: center;
+            color: #888;
+            font-size: 0.8rem;
+            margin-top: 2rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📦 EOQ Calculator</h1>
+        <p class="subtitle">Find the optimal order quantity that minimizes total inventory costs.</p>
+
+        <div class="input-row">
+            <div class="input-group">
+                <label for="demand">Annual demand (D)</label>
+                <input type="number" id="demand" value="10000" min="1" step="100">
+            </div>
+            <div class="input-group">
+                <label for="orderCost">Ordering cost (S) $</label>
+                <input type="number" id="orderCost" value="50" min="0" step="1">
+            </div>
+            <div class="input-group">
+                <label for="holdingCost">Holding cost (H) $/unit/year</label>
+                <input type="number" id="holdingCost" value="2" min="0.01" step="0.1">
+            </div>
+        </div>
+
+        <div class="results">
+            <div class="result-card">
+                <div class="label">Optimal Order Qty (EOQ)</div>
+                <div class="value" id="eoqValue">–</div>
+            </div>
+            <div class="result-card">
+                <div class="label">Orders / Year</div>
+                <div class="value" id="ordersPerYear">–</div>
+            </div>
+            <div class="result-card">
+                <div class="label">Days Between Orders</div>
+                <div class="value" id="daysBetween">–</div>
+            </div>
+        </div>
+
+        <div class="cost-summary">
+            <strong>Annual Costs</strong>
+            <div style="display:flex; justify-content:space-around; margin-top:1rem;">
+                <div><span style="color:#e67e22;">Ordering: $</span><span id="orderingCost">–</span></div>
+                <div><span style="color:#3498db;">Holding: $</span><span id="holdingCostVal">–</span></div>
+                <div><span style="color:#2ecc71;">Total: $</span><span id="totalCost">–</span></div>
+            </div>
+        </div>
+
+        <div class="canvas-wrapper">
+            <canvas id="costChart" width="600" height="300"></canvas>
+        </div>
+
+        <footer>
+            Industrial Engineering Tool – Built with HTML/CSS/JS
+        </footer>
+    </div>
+
+    <script>
+        // ---------- EOQ calculation function ----------
+        function calculateEOQ(D, S, H) {
+            const Qstar = Math.sqrt((2 * D * S) / H);
+            const N = D / Qstar;
+            const T = 365 / N;
+            const orderingCostTotal = N * S;
+            const holdingCostTotal = (Qstar / 2) * H;
+            const totalCost = orderingCostTotal + holdingCostTotal;
+            return {
+                EOQ: Qstar,
+                ordersPerYear: N,
+                daysBetween: T,
+                orderingCost: orderingCostTotal,
+                holdingCost: holdingCostTotal,
+                totalCost: totalCost
+            };
+        }
+
+        // ---------- Update UI and chart ----------
+        let chartInstance = null;
+
+        function updateDisplay() {
+            const D = parseFloat(document.getElementById('demand').value) || 0;
+            const S = parseFloat(document.getElementById('orderCost').value) || 0;
+            const H = parseFloat(document.getElementById('holdingCost').value) || 0;
+
+            if (D <= 0 || S <= 0 || H <= 0) {
+                document.getElementById('eoqValue').textContent = '–';
+                document.getElementById('ordersPerYear').textContent = '–';
+                document.getElementById('daysBetween').textContent = '–';
+                document.getElementById('orderingCost').textContent = '–';
+                document.getElementById('holdingCostVal').textContent = '–';
+                document.getElementById('totalCost').textContent = '–';
+                if (chartInstance) chartInstance.destroy();
+                return;
+            }
+
+            const res = calculateEOQ(D, S, H);
+
+            document.getElementById('eoqValue').textContent = Math.round(res.EOQ);
+            document.getElementById('ordersPerYear').textContent = res.ordersPerYear.toFixed(1);
+            document.getElementById('daysBetween').textContent = Math.round(res.daysBetween);
+            document.getElementById('orderingCost').textContent = res.orderingCost.toFixed(2);
+            document.getElementById('holdingCostVal').textContent = res.holdingCost.toFixed(2);
+            document.getElementById('totalCost').textContent = res.totalCost.toFixed(2);
+
+            // Generate chart data
+            const Qmin = Math.max(1, Math.floor(res.EOQ * 0.3));
+            const Qmax = Math.floor(res.EOQ * 2.5);
+            const step = Math.max(1, Math.floor((Qmax - Qmin) / 50));
+            const quantities = [];
+            const orderCosts = [];
+            const holdCosts = [];
+            const totalCosts = [];
+
+            for (let Q = Qmin; Q <= Qmax; Q += step) {
+                quantities.push(Q);
+                orderCosts.push((D / Q) * S);
+                holdCosts.push((Q / 2) * H);
+                totalCosts.push((D / Q) * S + (Q / 2) * H);
+            }
+
+            const ctx = document.getElementById('costChart').getContext('2d');
+            if (chartInstance) chartInstance.destroy();
+
+            chartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: quantities,
+                    datasets: [
+                        {
+                            label: 'Ordering Cost',
+                            data: orderCosts,
+                            borderColor: '#e67e22',
+                            backgroundColor: 'transparent',
+                            borderDash: [5, 5],
+                            tension: 0.2
+                        },
+                        {
+                            label: 'Holding Cost',
+                            data: holdCosts,
+                            borderColor: '#3498db',
+                            backgroundColor: 'transparent',
+                            borderDash: [5, 5],
+                            tension: 0.2
+                        },
+                        {
+                            label: 'Total Cost',
+                            data: totalCosts,
+                            borderColor: '#2ecc71',
+                            backgroundColor: 'rgba(46,204,113,0.1)',
+                            borderWidth: 2,
+                            tension: 0.2
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { position: 'bottom' },
+                        tooltip: { mode: 'index' }
+                    },
+                    scales: {
+                        x: { title: { display: true, text: 'Order Quantity' } },
+                        y: { title: { display: true, text: 'Annual Cost ($)' }, beginAtZero: true }
+                    }
+                },
+                plugins: [{
+                    id: 'eoqLine',
+                    afterDraw(chart) {
+                        const { ctx, chartArea, scales } = chart;
+                        const x = scales.x.getPixelForValue(res.EOQ);
+                        if (x >= chartArea.left && x <= chartArea.right) {
+                            ctx.save();
+                            ctx.beginPath();
+                            ctx.setLineDash([4, 4]);
+                            ctx.strokeStyle = 'red';
+                            ctx.lineWidth = 1;
+                            ctx.moveTo(x, chartArea.top);
+                            ctx.lineTo(x, chartArea.bottom);
+                            ctx.stroke();
+                            ctx.font = '12px "Segoe UI"';
+                            ctx.fillStyle = 'red';
+                            ctx.fillText(`EOQ = ${Math.round(res.EOQ)}`, x + 5, chartArea.top + 15);
+                            ctx.restore();
+                        }
+                    }
+                }]
+            });
+        }
+
+        document.getElementById('demand').addEventListener('input', updateDisplay);
+        document.getElementById('orderCost').addEventListener('input', updateDisplay);
+        document.getElementById('holdingCost').addEventListener('input', updateDisplay);
+
+        window.addEventListener('load', updateDisplay);
+    </script>
+</body>
+</html>
