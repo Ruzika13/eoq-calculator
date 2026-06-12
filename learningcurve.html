@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Learning Curve – IE Tool</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f4f7fc; display: flex; justify-content: center; padding: 2rem 1rem; }
+        .container { max-width: 800px; width: 100%; background: white; border-radius: 16px; padding: 2rem; box-shadow: 0 10px 30px rgba(0,0,0,0.08); }
+        h1 { color: #1e3c72; margin-bottom: 0.3rem; }
+        .subtitle { color: #555; margin-bottom: 2rem; }
+        .input-row { display: flex; gap: 1.5rem; margin-bottom: 2rem; flex-wrap: wrap; }
+        .input-group { flex: 1; min-width: 150px; }
+        .input-group label { display: block; font-weight: 600; margin-bottom: 0.3rem; color: #333; }
+        .input-group input { width: 100%; padding: 0.5rem; border: 2px solid #ccc; border-radius: 8px; font-size: 1rem; }
+        .input-group input:focus { border-color: #1e3c72; outline: none; }
+        .results { display: flex; gap: 2rem; flex-wrap: wrap; margin: 2rem 0; }
+        .result-card { background: #f0f4ff; padding: 1.5rem; border-radius: 12px; text-align: center; flex: 1; min-width: 150px; }
+        .result-card .label { font-size: 0.85rem; color: #555; text-transform: uppercase; }
+        .result-card .value { font-size: 1.8rem; font-weight: 700; color: #1e3c72; }
+        .canvas-wrapper { max-width: 100%; margin-top: 1rem; }
+        .back-link { display: block; text-align: center; margin-top: 2rem; color: #1e3c72; text-decoration: none; font-weight: 600; }
+        footer { text-align: center; color: #888; font-size: 0.8rem; margin-top: 1rem; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📉 Learning Curve (Wright Model)</h1>
+        <p class="subtitle">Time per unit decreases by a constant percentage each time production doubles.</p>
+
+        <div class="input-row">
+            <div class="input-group">
+                <label>Time for 1st unit (T₁) hours</label>
+                <input type="number" id="t1" value="100" min="0.1" step="1">
+            </div>
+            <div class="input-group">
+                <label>Learning rate (%)</label>
+                <input type="number" id="rate" value="80" min="1" max="99" step="1">
+            </div>
+            <div class="input-group">
+                <label>Unit number (n)</label>
+                <input type="number" id="unitN" value="50" min="1" step="1">
+            </div>
+        </div>
+
+        <div class="results">
+            <div class="result-card">
+                <div class="label">Time for nᵗʰ unit</div>
+                <div class="value" id="tnValue">–</div>
+            </div>
+            <div class="result-card">
+                <div class="label">Cumulative avg. time</div>
+                <div class="value" id="cumAvg">–</div>
+            </div>
+            <div class="result-card">
+                <div class="label">Total time (first n)</div>
+                <div class="value" id="totalTime">–</div>
+            </div>
+        </div>
+
+        <div class="canvas-wrapper">
+            <canvas id="lcChart" width="600" height="350"></canvas>
+        </div>
+
+        <a href="index.html" class="back-link">← Back to Tools</a>
+        <footer>Industrial Engineering Tool – Built with HTML/CSS/JS</footer>
+    </div>
+
+    <script>
+        let chartInstance = null;
+
+        // Learning curve exponent: b = log(rate) / log(2)
+        function calcB(rate) {
+            return Math.log(rate / 100) / Math.log(2);
+        }
+
+        // Time for nth unit: T1 * n^b
+        function unitTime(T1, b, n) {
+            return T1 * Math.pow(n, b);
+        }
+
+        // Approximate cumulative average time: (T1 / (1 + b)) * n^b   (for large n)
+        // But we'll use a loop for total time to be exact for small n
+        function totalTimeUpTo(T1, b, n) {
+            let total = 0;
+            for (let i = 1; i <= n; i++) {
+                total += unitTime(T1, b, i);
+            }
+            return total;
+        }
+
+        function updateDisplay() {
+            const T1 = parseFloat(document.getElementById('t1').value) || 100;
+            const rate = parseFloat(document.getElementById('rate').value) || 80;
+            const n = parseInt(document.getElementById('unitN').value) || 50;
+
+            if (T1 <= 0 || rate <= 0 || rate >= 100 || n < 1) {
+                document.getElementById('tnValue').textContent = '–';
+                document.getElementById('cumAvg').textContent = '–';
+                document.getElementById('totalTime').textContent = '–';
+                if (chartInstance) chartInstance.destroy();
+                return;
+            }
+
+            const b = calcB(rate);
+            const tn = unitTime(T1, b, n);
+            const total = totalTimeUpTo(T1, b, n);
+            const avg = total / n;
+
+            document.getElementById('tnValue').textContent = tn.toFixed(2) + ' hrs';
+            document.getElementById('cumAvg').textContent = avg.toFixed(2) + ' hrs';
+            document.getElementById('totalTime').textContent = total.toFixed(1) + ' hrs';
+
+            // Generate chart data for first n units (or up to 100 points)
+            const maxPlot = Math.min(n, 100);
+            const step = Math.max(1, Math.floor(maxPlot / 50));
+            const xLabels = [];
+            const unitTimes = [];
+            const cumAvgTimes = [];
+
+            let runningTotal = 0;
+            for (let i = 1; i <= maxPlot; i += step) {
+                const tu = unitTime(T1, b, i);
+                runningTotal += tu; // not quite right if step>1, but we'll approximate cum avg by recalc
+                // Better: recalc cum avg properly
+                const totalI = totalTimeUpTo(T1, b, i);
+                xLabels.push(i);
+                unitTimes.push(unitTime(T1, b, i));
+                cumAvgTimes.push(totalI / i);
+            }
+
+            const ctx = document.getElementById('lcChart').getContext('2d');
+            if (chartInstance) chartInstance.destroy();
+
+            chartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: xLabels,
+                    datasets: [
+                        {
+                            label: 'Time for nᵗʰ unit',
+                            data: unitTimes,
+                            borderColor: '#2980b9',
+                            backgroundColor: 'rgba(41,128,185,0.1)',
+                            tension: 0.2,
+                            pointRadius: 0
+                        },
+                        {
+                            label: 'Cumulative Average Time',
+                            data: cumAvgTimes,
+                            borderColor: '#c0392b',
+                            backgroundColor: 'rgba(192,57,43,0.1)',
+                            borderDash: [5,5],
+                            tension: 0.2,
+                            pointRadius: 0
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { position: 'bottom' },
+                        tooltip: { mode: 'index' }
+                    },
+                    scales: {
+                        x: { title: { display: true, text: 'Unit Number' } },
+                        y: { title: { display: true, text: 'Hours' }, beginAtZero: true }
+                    }
+                }
+            });
+        }
+
+        document.getElementById('t1').addEventListener('input', updateDisplay);
+        document.getElementById('rate').addEventListener('input', updateDisplay);
+        document.getElementById('unitN').addEventListener('input', updateDisplay);
+
+        window.addEventListener('load', updateDisplay);
+    </script>
+</body>
+</html>
