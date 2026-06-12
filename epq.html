@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EPQ Calculator – IE Tool</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f4f7fc; display: flex; justify-content: center; padding: 2rem 1rem; }
+        .container { max-width: 800px; width: 100%; background: white; border-radius: 16px; padding: 2rem; box-shadow: 0 10px 30px rgba(0,0,0,0.08); }
+        h1 { color: #1e3c72; margin-bottom: 0.5rem; }
+        .subtitle { color: #555; margin-bottom: 2rem; }
+        .input-row { display: flex; gap: 1.5rem; margin-bottom: 2rem; flex-wrap: wrap; }
+        .input-group { flex: 1; min-width: 140px; }
+        .input-group label { display: block; font-weight: 600; margin-bottom: 0.3rem; color: #333; }
+        .input-group input { width: 100%; padding: 0.5rem; border: 2px solid #ccc; border-radius: 8px; font-size: 1rem; }
+        .results { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
+        .result-card { background: #f0f4ff; padding: 1rem; border-radius: 12px; text-align: center; }
+        .result-card .label { font-size: 0.8rem; color: #555; text-transform: uppercase; letter-spacing: 0.5px; }
+        .result-card .value { font-size: 1.4rem; font-weight: 700; color: #1e3c72; }
+        .canvas-wrapper { max-width: 100%; margin-top: 1rem; }
+        .back-link { display: block; text-align: center; margin-top: 2rem; color: #1e3c72; text-decoration: none; font-weight: 600; }
+        footer { text-align: center; color: #888; font-size: 0.8rem; margin-top: 1rem; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🏭 EPQ Calculator (Economic Production Quantity)</h1>
+        <p class="subtitle">Optimal production batch size when items are produced and used simultaneously.</p>
+
+        <div class="input-row">
+            <div class="input-group">
+                <label>Annual demand (D)</label>
+                <input type="number" id="demand" value="20000" min="1" step="100">
+            </div>
+            <div class="input-group">
+                <label>Setup cost (S) $</label>
+                <input type="number" id="setupCost" value="500" min="0" step="10">
+            </div>
+            <div class="input-group">
+                <label>Holding cost (H) $/unit/yr</label>
+                <input type="number" id="holdingCost" value="4" min="0.01" step="0.1">
+            </div>
+            <div class="input-group">
+                <label>Daily demand (d)</label>
+                <input type="number" id="dailyDemand" value="80" min="0.1" step="1">
+            </div>
+            <div class="input-group">
+                <label>Daily production rate (p)</label>
+                <input type="number" id="prodRate" value="200" min="0.1" step="1">
+            </div>
+        </div>
+
+        <div class="results">
+            <div class="result-card">
+                <div class="label">Optimal Batch (EPQ)</div>
+                <div class="value" id="epqValue">–</div>
+            </div>
+            <div class="result-card">
+                <div class="label">Production runs / yr</div>
+                <div class="value" id="runsPerYear">–</div>
+            </div>
+            <div class="result-card">
+                <div class="label">Cycle length (days)</div>
+                <div class="value" id="cycleDays">–</div>
+            </div>
+            <div class="result-card">
+                <div class="label">Max inventory</div>
+                <div class="value" id="maxInv">–</div>
+            </div>
+        </div>
+
+        <div class="canvas-wrapper">
+            <canvas id="epqChart" width="600" height="300"></canvas>
+        </div>
+
+        <a href="index.html" class="back-link">← Back to Tools</a>
+        <footer>Industrial Engineering Tool – Built with HTML/CSS/JS</footer>
+    </div>
+
+    <script>
+        let chartInstance = null;
+
+        function calculateEPQ(D, S, H, d, p) {
+            if (d >= p) return null;
+            const Q = Math.sqrt((2 * D * S) / (H * (1 - d / p)));
+            const runs = D / Q;
+            const cycleDays = 365 / runs;
+            const maxInventory = Q * (1 - d / p);
+            const setupCostTotal = runs * S;
+            const holdingCostTotal = (maxInventory / 2) * H;
+            const totalCost = setupCostTotal + holdingCostTotal;
+            return { Q, runs, cycleDays, maxInventory, setupCostTotal, holdingCostTotal, totalCost };
+        }
+
+        function updateDisplay() {
+            const D = parseFloat(document.getElementById('demand').value) || 0;
+            const S = parseFloat(document.getElementById('setupCost').value) || 0;
+            const H = parseFloat(document.getElementById('holdingCost').value) || 0;
+            const d = parseFloat(document.getElementById('dailyDemand').value) || 0;
+            const p = parseFloat(document.getElementById('prodRate').value) || 0;
+
+            if (D <= 0 || S < 0 || H <= 0 || d <= 0 || p <= 0 || d >= p) {
+                document.querySelectorAll('.value').forEach(el => el.textContent = '–');
+                if (chartInstance) chartInstance.destroy();
+                return;
+            }
+
+            const epq = calculateEPQ(D, S, H, d, p);
+            document.getElementById('epqValue').textContent = Math.round(epq.Q);
+            document.getElementById('runsPerYear').textContent = epq.runs.toFixed(2);
+            document.getElementById('cycleDays').textContent = Math.round(epq.cycleDays);
+            document.getElementById('maxInv').textContent = Math.round(epq.maxInventory);
+
+            // Cost curve
+            const Qmin = Math.max(1, Math.floor(epq.Q * 0.3));
+            const Qmax = Math.floor(epq.Q * 2.5);
+            const step = Math.max(1, Math.floor((Qmax - Qmin) / 50));
+            const quantities = [], setupCosts = [], holdCosts = [], totalCosts = [];
+            for (let Q = Qmin; Q <= Qmax; Q += step) {
+                const maxInv = Q * (1 - d / p);
+                const sCost = (D / Q) * S;
+                const hCost = (maxInv / 2) * H;
+                quantities.push(Q);
+                setupCosts.push(sCost);
+                holdCosts.push(hCost);
+                totalCosts.push(sCost + hCost);
+            }
+
+            const ctx = document.getElementById('epqChart').getContext('2d');
+            if (chartInstance) chartInstance.destroy();
+            chartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: quantities,
+                    datasets: [
+                        { label: 'Setup Cost', data: setupCosts, borderColor: '#e67e22', borderDash: [5,5], tension: 0.2 },
+                        { label: 'Holding Cost', data: holdCosts, borderColor: '#3498db', borderDash: [5,5], tension: 0.2 },
+                        { label: 'Total Cost', data: totalCosts, borderColor: '#2ecc71', borderWidth: 2, tension: 0.2 }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { position: 'bottom' }, tooltip: { mode: 'index' } },
+                    scales: { x: { title: { display: true, text: 'Batch Size' } }, y: { title: { display: true, text: 'Annual Cost ($)' }, beginAtZero: true } }
+                }
+            });
+        }
+
+        document.querySelectorAll('input').forEach(input => input.addEventListener('input', updateDisplay));
+        window.addEventListener('load', updateDisplay);
+    </script>
+</body>
+</html>
