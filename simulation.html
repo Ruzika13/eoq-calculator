@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inventory Simulation (s,S) – IE Tool</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f4f7fc; display: flex; justify-content: center; padding: 2rem 1rem; }
+        .container { max-width: 900px; width: 100%; background: white; border-radius: 16px; padding: 2rem; box-shadow: 0 10px 30px rgba(0,0,0,0.08); }
+        h1 { color: #1e3c72; margin-bottom: 0.3rem; }
+        .subtitle { color: #555; margin-bottom: 2rem; }
+        .input-row { display: flex; gap: 1.5rem; margin-bottom: 2rem; flex-wrap: wrap; }
+        .input-group { flex: 1; min-width: 150px; }
+        .input-group label { display: block; font-weight: 600; margin-bottom: 0.3rem; color: #333; }
+        .input-group input { width: 100%; padding: 0.5rem; border: 2px solid #ccc; border-radius: 8px; font-size: 1rem; transition: border 0.2s; }
+        .input-group input:focus { border-color: #1e3c72; outline: none; }
+        button { background: #1e3c72; color: white; border: none; padding: 0.6rem 1.5rem; border-radius: 8px; cursor: pointer; font-weight: 600; margin-top: 1rem; }
+        button:hover { background: #2a4d8c; }
+        .results-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin: 2rem 0; }
+        .result-card { background: #f0f4ff; padding: 1rem; border-radius: 12px; text-align: center; }
+        .result-card .label { font-size: 0.8rem; color: #555; text-transform: uppercase; letter-spacing: 0.5px; }
+        .result-card .value { font-size: 1.6rem; font-weight: 700; color: #1e3c72; }
+        .canvas-wrapper { max-width: 100%; margin-top: 1rem; }
+        .back-link { display: block; text-align: center; margin-top: 2rem; color: #1e3c72; text-decoration: none; font-weight: 600; }
+        footer { text-align: center; color: #888; font-size: 0.8rem; margin-top: 1rem; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📦 Inventory Simulation (s,S) Policy</h1>
+        <p class="subtitle">Daily simulation with random demand. When stock ≤ s, order up to S after a lead time.</p>
+
+        <div class="input-row">
+            <div class="input-group">
+                <label>Reorder point (s)</label>
+                <input type="number" id="s" value="10" min="0">
+            </div>
+            <div class="input-group">
+                <label>Order‑up‑to level (S)</label>
+                <input type="number" id="S" value="50" min="1">
+            </div>
+            <div class="input-group">
+                <label>Lead time (days)</label>
+                <input type="number" id="leadTime" value="3" min="0" step="1">
+            </div>
+            <div class="input-group">
+                <label>Mean daily demand</label>
+                <input type="number" id="demandMean" value="8" min="0.1" step="0.1">
+            </div>
+            <div class="input-group">
+                <label>Simulation days</label>
+                <input type="number" id="numDays" value="100" min="10" step="10">
+            </div>
+        </div>
+
+        <button onclick="runSimulation()">▶ Run Simulation</button>
+
+        <div class="results-grid" id="resultsContainer" style="display: none;">
+            <div class="result-card">
+                <div class="label">Fill Rate</div>
+                <div class="value" id="fillRate">–</div>
+            </div>
+            <div class="result-card">
+                <div class="label">Avg Inventory</div>
+                <div class="value" id="avgInventory">–</div>
+            </div>
+            <div class="result-card">
+                <div class="label">Stockout Days</div>
+                <div class="value" id="stockoutDays">–</div>
+            </div>
+            <div class="result-card">
+                <div class="label">Total Stockout (units)</div>
+                <div class="value" id="totalStockout">–</div>
+            </div>
+        </div>
+
+        <div class="canvas-wrapper">
+            <canvas id="inventoryChart" width="600" height="350"></canvas>
+        </div>
+
+        <a href="index.html" class="back-link">← Back to Tools</a>
+        <footer>Industrial Engineering Tool – Built with HTML/CSS/JS</footer>
+    </div>
+
+    <script>
+        let chartInstance = null;
+
+        // Simple Poisson random variate generator (Knuth method)
+        function poissonRandom(lambda) {
+            const L = Math.exp(-lambda);
+            let k = 0;
+            let p = 1;
+            do {
+                k++;
+                p *= Math.random();
+            } while (p > L);
+            return k - 1;
+        }
+
+        function runSimulation() {
+            // Read inputs
+            const s = parseInt(document.getElementById('s').value) || 0;
+            const S = parseInt(document.getElementById('S').value) || 0;
+            const leadTime = parseInt(document.getElementById('leadTime').value) || 0;
+            const demandMean = parseFloat(document.getElementById('demandMean').value) || 0;
+            const numDays = parseInt(document.getElementById('numDays').value) || 100;
+
+            // Validate
+            if (S <= s) {
+                alert('Order‑up‑to level S must be greater than reorder point s.');
+                return;
+            }
+            if (demandMean <= 0) {
+                alert('Demand mean must be positive.');
+                return;
+            }
+
+            // State variables
+            let inventory = S; // start full
+            let onOrder = 0;
+            let daysUntilArrival = 0;
+            let totalDemand = 0;
+            let totalStockoutUnits = 0;
+            let stockoutDaysCount = 0;
+
+            const inventoryHistory = new Array(numDays).fill(0);
+
+            for (let day = 0; day < numDays; day++) {
+                // 1. Check if an order arrives today
+                if (onOrder > 0 && daysUntilArrival === 0) {
+                    inventory = S;    // order‑up‑to S (simplified: we assume order size = S - current inv, but model resets to S)
+                    onOrder = 0;
+                }
+
+                // 2. Daily demand (Poisson, rounded)
+                const demand = poissonRandom(demandMean);
+                totalDemand += demand;
+
+                // 3. Fulfill demand
+                if (demand > inventory) {
+                    const stockoutToday = demand - inventory;
+                    totalStockoutUnits += stockoutToday;
+                    inventory = 0;
+                    stockoutDaysCount++;
+                } else {
+                    inventory -= demand;
+                }
+
+                // 4. Reorder logic
+                if (inventory <= s && onOrder === 0) {
+                    onOrder = S - inventory; // order quantity
+                    daysUntilArrival = leadTime;
+                }
+
+                // 5. Decrease lead time counter
+                if (daysUntilArrival > 0) {
+                    daysUntilArrival--;
+                }
+
+                inventoryHistory[day] = inventory;
+            }
+
+            // KPIs
+            const fillRate = totalDemand > 0 ? (totalDemand - totalStockoutUnits) / totalDemand : 1;
+            const avgInventory = inventoryHistory.reduce((sum, val) => sum + val, 0) / numDays;
+
+            // Display results
+            document.getElementById('resultsContainer').style.display = 'grid';
+            document.getElementById('fillRate').textContent = (fillRate * 100).toFixed(1) + '%';
+            document.getElementById('avgInventory').textContent = avgInventory.toFixed(1);
+            document.getElementById('stockoutDays').textContent = stockoutDaysCount;
+            document.getElementById('totalStockout').textContent = totalStockoutUnits;
+
+            // Chart
+            const ctx = document.getElementById('inventoryChart').getContext('2d');
+            if (chartInstance) chartInstance.destroy();
+
+            const daysLabels = Array.from({ length: numDays }, (_, i) => i + 1);
+            chartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: daysLabels,
+                    datasets: [{
+                        label: 'Inventory Level',
+                        data: inventoryHistory,
+                        borderColor: '#1e3c72',
+                        backgroundColor: 'rgba(30,60,114,0.1)',
+                        fill: true,
+                        tension: 0.2,
+                        pointRadius: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { position: 'bottom' },
+                        tooltip: { mode: 'index' }
+                    },
+                    scales: {
+                        x: { title: { display: true, text: 'Day' } },
+                        y: { title: { display: true, text: 'Inventory Level' }, beginAtZero: true }
+                    }
+                }
+            });
+        }
+
+        // Run a default simulation on load
+        window.addEventListener('load', () => {
+            runSimulation();
+        });
+    </script>
+</body>
+</html>
