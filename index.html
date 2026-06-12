@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Industrial Engineering Tools – Portfolio</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f0f2f5; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 2rem; }
+        .dashboard { max-width: 800px; width: 100%; background: white; border-radius: 20px; padding: 3rem 2rem; box-shadow: 0 10px 40px rgba(0,0,0,0.1); text-align: center; }
+        h1 { color: #1e3c72; font-size: 2.2rem; margin-bottom: 0.5rem; }
+        .subtitle { color: #555; margin-bottom: 3rem; font-size: 1.1rem; }
+        .tool-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 2rem; }
+        .tool-card {
+            background: #f8faff;
+            border-radius: 16px;
+            padding: 2rem 1.5rem;
+            text-decoration: none;
+            color: #1e3c72;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            transition: transform 0.2s, box-shadow 0.2s;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .tool-card:hover { transform: translateY(-5px); box-shadow: 0 8px 25px rgba(0,0,0,0.1); }
+        .tool-icon { font-size: 3rem; margin-bottom: 1rem; }
+        .tool-name { font-weight: 700; font-size: 1.3rem; }
+        .tool-desc { color: #555; margin-top: 0.5rem; font-size: 0.9rem; }
+        footer { margin-top: 3rem; color: #888; font-size: 0.85rem; }
+    </style>
+</head>
+<body>
+    <div class="dashboard">
+        <h1>⚙️ Industrial Engineering Toolkit</h1>
+        <p class="subtitle">A collection of interactive calculators for operations research and supply chain analysis.</p>
+        <div class="tool-grid">
+            <a href="eoq.html" class="tool-card">
+                <span class="tool-icon">📦</span>
+                <span class="tool-name">EOQ Calculator</span>
+                <span class="tool-desc">Optimal order quantity, cost breakdown & chart</span>
+            </a>
+            <a href="queue.html" class="tool-card">
+                <span class="tool-icon">📊</span>
+                <span class="tool-name">M/M/1 Queue</span>
+                <span class="tool-desc">Traffic intensity, waiting times, steady-state distribution</span>
+            </a>
+        </div>
+        <footer>Built with HTML/CSS/JS · Hosted on GitHub Pages</footer>
+    </div>
+</body>
+</html>
